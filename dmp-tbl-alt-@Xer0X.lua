@@ -23,14 +23,12 @@ mdl.fnc_put_lit = function(tbl_opts, tbl_buff, the_lit, put_eol)
 end
 
 mdl.fnc_put_val = function(tbl_opts, tbl_buff, level, indent_str, the_val, put_indent, run_id)
-	if
-		type(the_val) ~= 'table'
+	if	type(the_val) ~= 'table'
 	then
 		mdl.fnc_put_lit(tbl_opts, tbl_buff, (put_indent and indent_str or "")..mdl.fnc_quote_val(the_val), false)
 		if 	tbl_opts.limit
 		and	tbl_opts.limit < #tbl_buff
 		then	tbl_buff[#tbl_buff] = "..."
-			Xer0X.STP.stacktrace()
 			error(string.format("buffer overrun, because you set limit %d", tbl_opts.limit))
 		end
 	else
@@ -220,6 +218,7 @@ mdl.fnc_file_save = function(tbl_inpt, tbl_opts, tbl_name, sort_by_key)
 		then	file_hnd:write("}")
 		end
 	end
+	-- return values:
 	if
 	not	sz_file_path
 	then	-- return stringtable from string
@@ -237,7 +236,7 @@ mdl.fnc_file_save = function(tbl_inpt, tbl_opts, tbl_name, sort_by_key)
 		ret_val = file_hnd:read("*a").."--|"
 	else
 		if	tbl_opts.file_close
-		then
+		then	-- close file
 			file_hnd:close()
 			tbl_opts.file_hnd = nil
 		end
