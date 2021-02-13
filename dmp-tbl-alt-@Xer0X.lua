@@ -1,11 +1,11 @@
-﻿local opt_def = {
+local opt_def = {
 	compact = false,
 	moon = false,
 	indent_str = "	",
 	equal_sign = ":"
 }
 
-local mdl = {}
+local mdl = { }
 
 mdl.fnc_quote_val = function(the_val)
 	local	val_type = type(the_val)
@@ -27,14 +27,15 @@ mdl.fnc_put_val = function(tbl_opts, tbl_buff, level, indent_str, the_val, put_i
 		type(the_val) ~= 'table'
 	then
 		mdl.fnc_put_lit(tbl_opts, tbl_buff, (put_indent and indent_str or "")..mdl.fnc_quote_val(the_val), false)
-		if 	tbl_opts.limit and
-			tbl_opts.limit < #tbl_buff
+		if 	tbl_opts.limit
+		and	tbl_opts.limit < #tbl_buff
 		then	tbl_buff[#tbl_buff] = "..."
 			Xer0X.STP.stacktrace()
 			error(string.format("buffer overrun, because you set limit %d", tbl_opts.limit))
 		end
 	else
 		mdl.fnc_buff(the_val, tbl_opts, tbl_buff, level + 1, indent_str, run_id)
+	
 	end
 	mdl.fnc_put_lit(tbl_opts, tbl_buff, tbl_opts.values_sep, true)
 end
@@ -49,7 +50,26 @@ mdl.fnc_key_to_str = function(the_key)
 	return the_key
 end
 
-mdl.fnc_buff = function(tbl_inpt, tbl_opts, tbl_buff, level, indent_str, run_id, tbl_name)
+local tbl_comp_type = { string_string = true, number_number = true }
+local tbl_comp_type_rate = { ["nil"] = 0, ["number"] = 1, ["string"] = 2, ["boolean"] = 3, ["userdata"] = 4, ["table"] = 5, ["function"] = 6 }
+
+local function fnc_cmp_key_val(val1, val2)
+	local key1_type = type(val1.key)
+	local key2_type = type(val2.key)
+	return tbl_comp_type[key1_type.."_"..key2_type]
+		and	val1.key < val2.key
+		or tbl_comp_type_rate[key1_type] < tbl_comp_type_rate[key2_type]
+end
+
+local function fnc_cmp_val(val1, val2)
+	local val1_type = type(val1)
+	local val2_type = type(val2)
+	return tbl_comp_type[val1_type.."_"..val2_type]
+		and	val1 < val2
+		or tbl_comp_type_rate[val1_type] < tbl_comp_type_rate[val2_type]
+end
+
+mdl.fnc_buff = function(tbl_inpt, tbl_opts, tbl_buff, level, indent_str, run_id, tbl_name, sort_by_key)
 	if not	level
 	then	level = 0
 	end
@@ -95,32 +115,45 @@ mdl.fnc_buff = function(tbl_inpt, tbl_opts, tbl_buff, level, indent_str, run_id,
 		then	run_id = " -- #"
 		else	run_id = run_id.."-"
 		end
-		local sub_run_id
-		sub_run_id = 0
-		local tbl_inp_len = #tbl_inpt
-		if tbl_inp_len == 0 then
-			table.sort(tbl_inpt)		 
-		end
-		for	ii = 1, tbl_inp_len
-		do 	local ii_val = tbl_inpt[ii]
-			if type(ii_val) == "table"
-			then sub_run_id = sub_run_id + 1
+	
+		local sub_run_id = 0
+		local	tbl_inp_len = #tbl_inpt
+		if	tbl_inp_len > 0
+		then	table.sort(tbl_inpt, fnc_cmp_val)
+			for	ii = 1, tbl_inp_len
+			do 	local ii_val = tbl_inpt[ii]
+				if type(ii_val) == "table"
+				then sub_run_id = sub_run_id + 1
+				end
+				mdl.fnc_put_lit(tbl_opts, tbl_buff, indent_str..opts_indent_str, false)
+				mdl.fnc_put_val(tbl_opts, tbl_buff, level, indent_str..opts_indent_str, ii_val, false, run_id.."N"..sub_run_id)
 			end
-			mdl.fnc_put_lit(tbl_opts, tbl_buff, indent_str..opts_indent_str, false)
-			mdl.fnc_put_val(tbl_opts, tbl_buff, level, indent_str..opts_indent_str, ii_val, false, run_id.."N"..sub_run_id)
+		end
+		local	fnc_add_out_key_val = function(key_str, val, sub_run_id)
+			mdl.fnc_put_lit(tbl_opts, tbl_buff, indent_str..opts_indent_str..key_str, false)
+			mdl.fnc_put_lit(tbl_opts, tbl_buff, tbl_opts.equal_sign, false)
+			mdl.fnc_put_val(tbl_opts, tbl_buff, level, indent_str..opts_indent_str, val, false, run_id.."H"..sub_run_id)
 		end
 		sub_run_id = 0
+		local	tbl_keys = { }
 		for key, val in next, tbl_inpt
 		do	if	type(key) ~= "number"
 			or	key < 1
 			or	key > tbl_inp_len
-			then	local key_str =  mdl.fnc_key_to_str(key)
-				if type(val) == "table"
-				then sub_run_id = sub_run_id + 1
+			then	local	key_str =  mdl.fnc_key_to_str(key)
+				if	type(val) == "table"
+				then	sub_run_id = sub_run_id + 1
 				end
-				mdl.fnc_put_lit(tbl_opts, tbl_buff, indent_str..opts_indent_str..key_str, false)
-				mdl.fnc_put_lit(tbl_opts, tbl_buff, tbl_opts.equal_sign, false)
-				mdl.fnc_put_val(tbl_opts, tbl_buff, level, indent_str..opts_indent_str, val, false, run_id.."H"..sub_run_id)
+				if	sort_by_key
+				then	table.insert(tbl_keys, { key = key, key_str = key_str, val = val, sub_run_id = sub_run_id })
+				else	fnc_add_out_key_val(key_str, val, sub_run_id)
+				end
+			end
+		end
+		if	sort_by_key
+		then	table.sort(tbl_keys, fnc_cmp_key_val)
+			for ii, ii_val in ipairs(tbl_keys)
+			do	fnc_add_out_key_val(ii_val.key_str, ii_val.val, ii_val.sub_run_id)
 			end
 		end
 		if 	string.match(tbl_buff[#tbl_buff], "^"..tbl_opts.values_sep.."\r?\n?$")
@@ -128,8 +161,8 @@ mdl.fnc_buff = function(tbl_inpt, tbl_opts, tbl_buff, level, indent_str, run_id,
 		end
 		mdl.fnc_put_lit(tbl_opts, tbl_buff, indent_str..'}', false)
 	end
-	if tbl_opts.file_hnd then
-		for	ii = tbl_buff.write_pos + 1, #tbl_buff
+	if tbl_opts.file_hnd
+	then	for	ii = tbl_buff.write_pos + 1, #tbl_buff
 		do 	tbl_opts.file_hnd:write(tbl_buff[ii])
 		end
 		tbl_buff.write_pos = #tbl_buff
@@ -137,13 +170,12 @@ mdl.fnc_buff = function(tbl_inpt, tbl_opts, tbl_buff, level, indent_str, run_id,
 	return tbl_buff
 end
 
-
 mdl.fnc_get_str = function(tbl_inpt, tbl_opts, tbl_name)
 	local tbl_buff = mdl.fnc_buff(tbl_inpt, tbl_opts, tbl_name)
 	return table.concat(tbl_buff)
 end
 
-mdl.fnc_file_save = function(tbl_inpt, tbl_opts, tbl_name)
+mdl.fnc_file_save = function(tbl_inpt, tbl_opts, tbl_name, sort_by_key)
 	if not	tbl_opts
 	then	tbl_opts = { }
 	end
@@ -151,14 +183,16 @@ mdl.fnc_file_save = function(tbl_inpt, tbl_opts, tbl_name)
 	local	sz_file_path = tbl_opts.file_path
 	if	tbl_opts.file_hnd
 	then	file_hnd = tbl_opts.file_hnd
-	else	if
-		not	sz_file_path
+	else	if not	sz_file_path
 		then	-- create a pseudo file that writes to a string and return the string
 			file_hnd = { write = function(self, newstr) self.str = self.str..newstr end, str = "" }
 		elseif	sz_file_path == true
 		or	sz_file_path == 1
 		then	file_hnd = io.tmpfile()
-		else    
+		else    --[[ write table to file
+			use io.open here rather than io.output,
+			since in windows when clicking on a file opened
+			with io.output will create an error]]
 			file_hnd, file_err = io.open(sz_file_path, tbl_opts.file_init and "w" or "a")
 			if err_open then return nil, err_open end
 		end
@@ -175,7 +209,7 @@ mdl.fnc_file_save = function(tbl_inpt, tbl_opts, tbl_name)
 	end
 	local	tbl_buff
 	if	tbl_inpt then
-        	tbl_buff = mdl.fnc_buff(tbl_inpt, tbl_opts, nil, nil, nil, nil, tbl_name)
+        	tbl_buff = mdl.fnc_buff(tbl_inpt, tbl_opts, nil, nil, nil, nil, tbl_name, sort_by_key)
 		if	tbl_opts.file_append
 		and     tbl_opts.file_multi
 		then	file_hnd:write(",\n")
@@ -188,17 +222,22 @@ mdl.fnc_file_save = function(tbl_inpt, tbl_opts, tbl_name)
 	end
 	if
 	not	sz_file_path
-	then
+	then	-- return stringtable from string
+		-- set marker for stringtable
 		return file_hnd.str.."--|"
 	elseif
 		sz_file_path == true or
 		sz_file_path == 1
 	then
+		-- return stringttable from file
 		file_hnd:seek("set")
+		--[[ no need to close file,
+		it gets closed and removed automatically
+		set marker for stringtable --]]
 		ret_val = file_hnd:read("*a").."--|"
 	else
 		if	tbl_opts.file_close
-		then	-- close file
+		then
 			file_hnd:close()
 			tbl_opts.file_hnd = nil
 		end
@@ -226,6 +265,11 @@ res_val, file_hnd = mdl.fnc_file_save(tbl_inpt,	{ file_path = fp, file_append	= 
 res_val, file_hnd = mdl.fnc_file_save(tbl_inp2,	{ file_path = fp, file_append	= 1, file_multi = 1, file_hnd = file_hnd }, "named table 1")
 res_val, file_hnd = mdl.fnc_file_save(nil,	{ file_path = fp, file_append	= 1, file_multi = 1, file_hnd = file_hnd, file_close = 1 })
 --]=]
+
+local	abc_var_test = 12345
+if	abc_var_test
+then	abc_var_test = abc_var_test + 1
+end
 
 return mdl
 
